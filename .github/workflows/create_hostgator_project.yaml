@@ -1,0 +1,110 @@
+name: 'Hostgator Project Deploy'
+
+on:
+  create:
+    branches:
+      - 'hostgator/**'
+
+jobs:
+  create_project:
+    name: 'Create Hostgator Project'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: 'Extract branch name'
+        shell: bash
+        run: |
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          echo "BRANCH_NAME: $BRANCH_NAME"
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+
+      - name: 'Create subdomain'
+        shell: bash
+        run: |
+          curl_command="curl -s -X GET \
+            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
+            '${{ vars.UAPI_URI }}/execute/SubDomain/addsubdomain?domain=${{ env.BRANCH_NAME }}&rootdomain=witsoft.co&dir=/${{ env.BRANCH_NAME }}.witsoft.co'"
+          echo "curl command: $curl_command"
+          echo "executing..."
+          result=$(eval $curl_command)
+          echo "result log: $result"
+          status=$(echo $result | jq '.status')
+          if [ $status -eq 0 ]
+          then
+            echo "ERROR: could not create subdomain"
+            exit 1;
+          fi
+          echo "Successful domain creation"
+          exit 0
+
+      - name: 'Zip files'
+        shell: bash
+        working-directory: ./app
+        run: |
+          echo "ziping..."
+          zip -r ./app.zip ./
+          echo "zip content:"
+          unzip -l ./app.zip
+
+      - name: 'Upload zip files'
+        shell: bash
+        working-directory: ./app
+        run: |
+          curl_command="curl -s -X POST \
+            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
+            -F 'file=@app.zip' \
+            '${{ vars.UAPI_URI }}/execute/Fileman/upload_files?get_disk_info=1&dir=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co&overwrite=1'"
+          echo "curl command: $curl_command"
+          echo "executing..."
+          result=$(eval $curl_command)
+          echo "result log: $result"
+          status=$(echo $result | jq '.status')
+          if [ $status -eq 0 ]
+          then
+            echo "ERROR: files could not be uploaded"
+            exit 1;
+          fi
+          echo "Successful upload files"
+          exit 0
+      
+      - name: 'Uzip files'
+        shell: bash
+        working-directory: ./app
+        run: |
+          curl_command="curl -s -X POST \
+            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
+            '${{ vars.UAPI_URI }}/json-api/cpanel?cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&cpanel_jsonapi_apiversion=2&filelist=1&multiform=1&doubledecode=0&op=extract&sourcefiles=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co/app.zip&destfiles=/${{ env.BRANCH_NAME }}.witsoft.co'"
+          echo "curl command: $curl_command"
+          echo "executing..."
+          result=$(eval $curl_command)
+          echo "result log: $result"
+          status=$(echo $result | jq '.status')
+          if [ $status -eq 0 ]
+          then
+            echo "ERROR: files could not be unzip"
+            exit 1;
+          fi
+          echo "Successful unzip files"
+          exit 0
+
+      - name: 'Create database'
+        shell: bash
+        working-directory: ./app
+        run: |
+          curl_command="curl -s -X POST \
+            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
+            '${{ vars.UAPI_URI }}/execute/Mysql/create_database?name=witsoftc_${{ env.BRANCH_NAME }}'"
+          echo "curl command: $curl_command"
+          echo "executing..."
+          result=$(eval $curl_command)
+          echo "result log: $result"
+          status=$(echo $result | jq '.status')
+          if [ $status -eq 0 ]
+          then
+            echo "ERROR: database could not be create"
+            exit 1;
+          fi
+          echo "Successful database creation"
+          exit 0
