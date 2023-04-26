@@ -1,23 +1,39 @@
-# Hello world javascript action
+# Hello world docker action
 
 This action prints "Hello World" or "Hello" + the name of a person to greet to the log.
 
 ## Inputs
 
-### `who-to-greet`
+## `base-url`
+**Required** Api base url
 
-**Required** The name of the person to greet. Default `"World"`.
+## `user`
+**Required** User authentication
+
+## `token`
+**Required** Token authentication
+
+## `resource_path`
+**Required** Path to resource, example '/execute/Variables/get_user_information?name=mailbox_format'.
+
+## method:
+**Required** Request http method. Default: GET
+
+## `fields`
+Comma-separated list of key-value pairs to include as form data. Default ``
 
 ## Outputs
 
-### `time`
+## `status_code`
+Api status code'
 
-The time we greeted you.
+## `errors`
+Array of error json strings or empty
 
 ## Example usage
 
-```yaml
-uses: actions/hello-world-javascript-action@v1.1
+uses: ./actions/request_cpanel_uapi
 with:
-  who-to-greet: 'Mona the Octocat'
-```
+  base-url: 'http://example.com/'
+  user: 'my-user'
+  token: 'XXXXXXXXXXXXXX'

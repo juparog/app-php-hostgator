@@ -4,40 +4,35 @@ on:
   create:
     branches:
       - 'hostgator/**'
+env:
+  RESOURCE_PREFIX: 'witsoftc_'
 
 jobs:
   create_project:
     name: 'Create Hostgator Project'
     runs-on: ubuntu-latest
+    outputs:
+      branch_name: ${{ steps.extract_branch_name.outputs.BRANCH_NAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: 'Extract branch name'
+        id: extract_branch_name
         shell: bash
         run: |
           BRANCH_NAME="${GITHUB_REF##*/}"
           echo "BRANCH_NAME: $BRANCH_NAME"
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 'Create subdomain'
-        shell: bash
-        run: |
-          curl_command="curl -s -X GET \
-            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
-            '${{ vars.UAPI_URI }}/execute/SubDomain/addsubdomain?domain=${{ env.BRANCH_NAME }}&rootdomain=witsoft.co&dir=/${{ env.BRANCH_NAME }}.witsoft.co'"
-          echo "curl command: $curl_command"
-          echo "executing..."
-          result=$(eval $curl_command)
-          echo "result log: $result"
-          status=$(echo $result | jq '.status')
-          if [ $status -eq 0 ]
-          then
-            echo "ERROR: could not create subdomain"
-            exit 1;
-          fi
-          echo "Successful domain creation"
-          exit 0
+        uses: ./actions/request_cpanel_uapi
+        with:
+          base_url: '${{ vars.UAPI_URI }}'
+          user: '${{ secrets.UAPI_USER }}'
+          token: '${{ secrets.UAPI_TOKEN }}'
+          resource_path: '/execute/SubDomain/addsubdomain?domain=${{ env.BRANCH_NAME }}&rootdomain=witsoft.co&dir=/${{ env.BRANCH_NAME }}.witsoft.co'
 
       - name: 'Zip files'
         shell: bash
@@ -49,62 +44,53 @@ jobs:
           unzip -l ./app.zip
 
       - name: 'Upload zip files'
-        shell: bash
-        working-directory: ./app
-        run: |
-          curl_command="curl -s -X POST \
-            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
-            -F 'file=@app.zip' \
-            '${{ vars.UAPI_URI }}/execute/Fileman/upload_files?get_disk_info=1&dir=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co&overwrite=1'"
-          echo "curl command: $curl_command"
-          echo "executing..."
-          result=$(eval $curl_command)
-          echo "result log: $result"
-          status=$(echo $result | jq '.status')
-          if [ $status -eq 0 ]
-          then
-            echo "ERROR: files could not be uploaded"
-            exit 1;
-          fi
-          echo "Successful upload files"
-          exit 0
-      
-      - name: 'Uzip files'
-        shell: bash
-        working-directory: ./app
-        run: |
-          curl_command="curl -s -X POST \
-            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
-            '${{ vars.UAPI_URI }}/json-api/cpanel?cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&cpanel_jsonapi_apiversion=2&filelist=1&multiform=1&doubledecode=0&op=extract&sourcefiles=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co/app.zip&destfiles=/${{ env.BRANCH_NAME }}.witsoft.co'"
-          echo "curl command: $curl_command"
-          echo "executing..."
-          result=$(eval $curl_command)
-          echo "result log: $result"
-          status=$(echo $result | jq '.status')
-          if [ $status -eq 0 ]
-          then
-            echo "ERROR: files could not be unzip"
-            exit 1;
-          fi
-          echo "Successful unzip files"
-          exit 0
+        uses: ./actions/request_cpanel_uapi
+        with:
+          base_url: '${{ vars.UAPI_URI }}'
+          user: '${{ secrets.UAPI_USER }}'
+          token: '${{ secrets.UAPI_TOKEN }}'
+          resource_path: '/execute/Fileman/upload_files?get_disk_info=1&dir=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co&overwrite=1'
+          fields: 'file=@./app/app.zip'
 
-      - name: 'Create database'
+      - name: 'Unzip files'
+        uses: ./actions/request_cpanel_uapi
+        with:
+          base_url: '${{ vars.UAPI_URI }}'
+          user: '${{ secrets.UAPI_USER }}'
+          token: '${{ secrets.UAPI_TOKEN }}'
+          resource_path: '/json-api/cpanel?cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&cpanel_jsonapi_apiversion=2&filelist=1&multiform=1&doubledecode=0&op=extract&sourcefiles=/home2/witsoftc/${{ env.BRANCH_NAME }}.witsoft.co/app.zip&destfiles=/${{ env.BRANCH_NAME }}.witsoft.co'
+
+  create_database:
+    name: 'Create and config database'
+    runs-on: ubuntu-latest
+    needs: [ create_project ]
+    env:
+      BRANCH_NAME: ${{needs.create_project.outputs.branch_name}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: 'Zip files'
         shell: bash
-        working-directory: ./app
+        working-directory: ./db
         run: |
-          curl_command="curl -s -X POST \
-            -H'Authorization: cpanel ${{ secrets.UAPI_USER }}:${{ secrets.UAPI_TOKEN }}' \
-            '${{ vars.UAPI_URI }}/execute/Mysql/create_database?name=witsoftc_${{ env.BRANCH_NAME }}'"
-          echo "curl command: $curl_command"
-          echo "executing..."
-          result=$(eval $curl_command)
-          echo "result log: $result"
-          status=$(echo $result | jq '.status')
-          if [ $status -eq 0 ]
-          then
-            echo "ERROR: database could not be create"
-            exit 1;
-          fi
-          echo "Successful database creation"
-          exit 0
+          echo "ziping..."
+          zip -r ./app.zip ./
+          echo "zip content:"
+          unzip -l ./app.zip
+      
+      - name: 'Create database'
+        uses: ./actions/request_cpanel_uapi
+        with:
+          base_url: '${{ vars.UAPI_URI }}'
+          user: '${{ secrets.UAPI_USER }}'
+          token: '${{ secrets.UAPI_TOKEN }}'
+          resource_path: '/execute/Mysql/create_database?name=${{ env.RESOURCE_PREFIX }}${{ env.BRANCH_NAME }}'
+
+      - name: 'Add permissions to database user'
+        uses: ./actions/request_cpanel_uapi
+        with:
+          base_url: '${{ vars.UAPI_URI }}'
+          user: '${{ secrets.UAPI_USER }}'
+          token: '${{ secrets.UAPI_TOKEN }}'
+          resource_path: '/execute/Mysql/set_privileges_on_database?user=${{ secrets.DB_USER }}&database=${{ env.RESOURCE_PREFIX }}${{ env.BRANCH_NAME }}&privileges=ALL%20PRIVILEGES'

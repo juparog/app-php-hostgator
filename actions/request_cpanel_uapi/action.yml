@@ -1,13 +1,38 @@
-name: 'Hello World'
-description: 'Greet someone and record the time'
+# action.yml
+name: 'cPanel UAPI request'
+description: 'Request to the cPanel UAPI api'
 inputs:
-  who-to-greet:  # id of input
-    description: 'Who to greet'
+  base_url:
+    description: 'Api base url'
     required: true
-    default: 'World'
+  user:
+    description: 'User authentication'
+    required: true
+  token:
+    description: 'Token authentication'
+    required: true
+  resource_path:
+    description: 'Path to resource, example "/execute/Variables/get_user_information?name=mailbox_format"'
+    required: true
+  method:
+    description: 'Request http method'
+    required: true
+    default: 'GET'
+  fields:
+    description: 'Comma-separated list of key-value pairs to include as form data. Default ``'
+    default: ''
 outputs:
-  time: # id of output
-    description: 'The time we greeted you'
+  status_code:
+    description: 'Api status code'
+  errors:
+    description: 'Array of error json strings or empty'
 runs:
-  using: 'node16'
-  main: 'index.js'
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.base_url }}
+    - ${{ inputs.user }}
+    - ${{ inputs.token }}
+    - ${{ inputs.resource_path }}
+    - ${{ inputs.method }}
+    - ${{ inputs.fields }}
